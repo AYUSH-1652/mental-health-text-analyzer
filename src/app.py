@@ -5,6 +5,10 @@ import streamlit as st
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_DIR = os.path.join(BASE_DIR, "models")
 
+VECTORIZER_FILE = os.path.join(MODEL_DIR, "tfidf_vectorizer.pkl")
+LABEL_ENCODER_FILE = os.path.join(MODEL_DIR, "label_encoder.pkl")
+MODEL_FILE = os.path.join(MODEL_DIR, "mental_health_model.pkl")
+
 st.set_page_config(
     page_title="Mental Health Analyzer",
     page_icon="🧠",
@@ -12,11 +16,23 @@ st.set_page_config(
 )
 
 
+def clean_text(text: str) -> str:
+    text = str(text).strip()
+    text = " ".join(text.split())
+    return text
+
+
+def check_artifacts():
+    required_files = [VECTORIZER_FILE, LABEL_ENCODER_FILE, MODEL_FILE]
+    missing_files = [file for file in required_files if not os.path.exists(file)]
+    return missing_files
+
+
 @st.cache_resource
 def load_artifacts():
-    vectorizer = joblib.load(os.path.join(MODEL_DIR, "tfidf_vectorizer.pkl"))
-    label_encoder = joblib.load(os.path.join(MODEL_DIR, "label_encoder.pkl"))
-    model = joblib.load(os.path.join(MODEL_DIR, "mental_health_model.pkl"))
+    vectorizer = joblib.load(VECTORIZER_FILE)
+    label_encoder = joblib.load(LABEL_ENCODER_FILE)
+    model = joblib.load(MODEL_FILE)
     return vectorizer, label_encoder, model
 
 
@@ -39,9 +55,21 @@ def get_suggestion(label):
 
 
 def main():
-    vectorizer, label_encoder, model = load_artifacts()
+    missing_files = check_artifacts()
+    if missing_files:
+        st.error("Model artifacts not found.")
+        st.code("Please run: python src/train.py")
+        st.write("Missing files:")
+        for file in missing_files:
+            st.write(f"- {os.path.basename(file)}")
+        st.stop()
 
-    # Clean CSS
+    try:
+        vectorizer, label_encoder, model = load_artifacts()
+    except Exception as e:
+        st.error(f"Failed to load model artifacts: {e}")
+        st.stop()
+
     st.markdown("""
         <style>
         .block-container {
@@ -59,16 +87,10 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
-    # Title
     st.markdown("# 🧠 Mental Health Text Analyzer")
-
-    st.markdown(
-        "Enter text and the model will predict the mental health category."
-    )
-
+    st.markdown("Enter text and the model will predict the mental health category.")
     st.warning("Educational use only. Not a medical diagnosis.")
 
-    # Input
     text = st.text_area(
         "Enter text",
         height=180,
@@ -76,9 +98,11 @@ def main():
     )
 
     if st.button("Analyze"):
-        if not text.strip():
+        text = clean_text(text)
+
+        if not text:
             st.error("Please enter some text.")
-            return
+            st.stop()
 
         X = vectorizer.transform([text])
         pred = model.predict(X)[0]
@@ -87,7 +111,6 @@ def main():
         label = label_encoder.inverse_transform([pred])[0]
         color = get_color(label)
 
-        # Result card
         st.markdown(f"""
         <div style="
             border-left: 6px solid {color};
@@ -100,17 +123,20 @@ def main():
         </div>
         """, unsafe_allow_html=True)
 
-        # Suggestion
         st.info(get_suggestion(label))
 
-        # Confidence bars
         st.markdown("### Confidence Scores")
 
-        for i, cls in enumerate(label_encoder.classes_):
-            st.write(f"{cls}: {probs[i]:.2f}")
-            st.progress(float(probs[i]))
+        sorted_scores = sorted(
+            zip(label_encoder.classes_, probs),
+            key=lambda x: x[1],
+            reverse=True
+        )
 
-        # Extra warning
+        for cls, prob in sorted_scores:
+            st.write(f"{cls}: {prob:.2f}")
+            st.progress(float(prob))
+
         if label == "Suicidal":
             st.error("⚠️ This indicates severe distress. Immediate help is recommended.")
 
