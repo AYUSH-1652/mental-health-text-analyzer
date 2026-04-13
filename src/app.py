@@ -1,4 +1,5 @@
 import os
+import sys
 import subprocess
 import joblib
 import streamlit as st
@@ -65,7 +66,7 @@ def train_model_if_missing():
 
     try:
         result = subprocess.run(
-            ["python", "src/train.py"],
+            [sys.executable, "src/train.py"],
             capture_output=True,
             text=True,
             cwd=BASE_DIR
