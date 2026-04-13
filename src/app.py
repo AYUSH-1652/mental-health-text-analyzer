@@ -1,4 +1,5 @@
 import os
+import subprocess
 import joblib
 import streamlit as st
 
@@ -24,8 +25,7 @@ def clean_text(text: str) -> str:
 
 def check_artifacts():
     required_files = [VECTORIZER_FILE, LABEL_ENCODER_FILE, MODEL_FILE]
-    missing_files = [file for file in required_files if not os.path.exists(file)]
-    return missing_files
+    return [file for file in required_files if not os.path.exists(file)]
 
 
 @st.cache_resource
@@ -54,15 +54,53 @@ def get_suggestion(label):
     }.get(label, "")
 
 
-def main():
+def train_model_if_missing():
     missing_files = check_artifacts()
-    if missing_files:
-        st.error("Model artifacts not found.")
-        st.code("Please run: python src/train.py")
-        st.write("Missing files:")
-        for file in missing_files:
-            st.write(f"- {os.path.basename(file)}")
-        st.stop()
+    if not missing_files:
+        return True
+
+    st.warning("Model not found. Training model... Please wait.")
+
+    os.makedirs(MODEL_DIR, exist_ok=True)
+
+    try:
+        result = subprocess.run(
+            ["python", "src/train.py"],
+            capture_output=True,
+            text=True,
+            cwd=BASE_DIR
+        )
+
+        if result.returncode != 0:
+            st.error("Model training failed.")
+            if result.stdout:
+                st.code(result.stdout)
+            if result.stderr:
+                st.code(result.stderr)
+            return False
+
+        missing_after_training = check_artifacts()
+        if missing_after_training:
+            st.error("Training finished, but model files are still missing.")
+            for file in missing_after_training:
+                st.write(f"- {os.path.basename(file)}")
+            return False
+
+        st.success("Model trained successfully. Reloading app...")
+        st.cache_resource.clear()
+        st.rerun()
+        return True
+
+    except Exception as e:
+        st.error(f"Error while training model: {e}")
+        return False
+
+
+def main():
+    if check_artifacts():
+        ok = train_model_if_missing()
+        if not ok:
+            st.stop()
 
     try:
         vectorizer, label_encoder, model = load_artifacts()
