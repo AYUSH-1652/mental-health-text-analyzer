@@ -75,7 +75,7 @@ mental-health-text-analyzer/
 
 ## 🌐 Live Demo
 
-👉 https://your-app-link.streamlit.app
+👉 [https://your-app-link.streamlit.app](https://mental-health-text-analyzer-gxqemjwjvrzdhzkr2dnghk.streamlit.app/)
 
 ---
 
